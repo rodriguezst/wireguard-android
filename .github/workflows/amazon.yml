@@ -15,6 +15,11 @@ jobs:
         java-version: 11
     - name: build release 
       run: ./gradlew assembleRelease
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: app-release
+        path: app/build/outputs/apk/release/app-release.apk
     - name: Upload to the Amazon AppStore
       uses: ALJAZEERAPLUS/amazon-appstore-action@v1.1.1
       with:
@@ -22,8 +27,3 @@ jobs:
         client-secret: ${{secrets.AMAZON_APPSTORE_CLIENT_SECRET}}
         app-id: ${{ secrets.AMAZON_APPSTORE_APP_ID }}
         apk-file: app/build/outputs/apk/release/app-release.apk
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v2
-      with:
-        name: app-release
-        path: app/build/outputs/apk/release/app-release.apk

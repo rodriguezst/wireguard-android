@@ -123,6 +123,7 @@ class TvMainActivity : AppCompatActivity() {
     private val files = ObservableKeyedArrayList<String, KeyedFile>()
     private val filesRoot = ObservableField("")
     private var configWebServer: TvConfigWebServer? = null
+    private var configWebServerDialog: androidx.appcompat.app.AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (AppCompatDelegate.getDefaultNightMode() != AppCompatDelegate.MODE_NIGHT_YES) {
@@ -272,6 +273,12 @@ class TvMainActivity : AppCompatActivity() {
     override fun onDestroy() {
         stopConfigWebServer()
         super.onDestroy()
+    }
+
+    override fun onStop() {
+        configWebServerDialog?.dismiss()
+        stopConfigWebServer()
+        super.onStop()
     }
 
     private var pendingNavigation: File? = null
@@ -441,9 +448,15 @@ class TvMainActivity : AppCompatActivity() {
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.tv_web_editor_title)
             .setView(view)
-            .setPositiveButton(android.R.string.ok, null)
-            .setNegativeButton(R.string.tv_web_editor_stop) { _, _ -> stopConfigWebServer() }
+            .setPositiveButton(R.string.tv_web_editor_stop) { _, _ -> stopConfigWebServer() }
             .show()
+        configWebServerDialog = dialog
+        dialog.setOnDismissListener {
+            if (configWebServerDialog === dialog)
+                configWebServerDialog = null
+            stopConfigWebServer()
+        }
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)?.requestFocus()
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * TV_WEB_DIALOG_WIDTH_FRACTION).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT,

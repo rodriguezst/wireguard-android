@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WireGuard TV Config Editor</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f4ef;
+      --panel: #ffffff;
+      --panel-soft: #f0eee8;
+      --text: #18212b;
+      --muted: #66717d;
+      --accent: #0f766e;
+      --accent-strong: #0b5f59;
+      --danger: #b45309;
+      --danger-strong: #9a3412;
+      --border: #d8d3c8;
+      --shadow: 0 18px 50px rgba(32, 39, 46, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 34px 0;
+    }
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(28px, 4vw, 48px);
+      letter-spacing: -0.055em;
+    }
+    p { color: var(--muted); margin: 0 0 12px; }
+    .warning {
+      border: 1px solid #f0c783;
+      background: #fff7e6;
+      color: #6f3f00;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(250px, 330px) 1fr;
+      gap: 16px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    label { display: block; color: var(--muted); margin: 0 0 8px; }
+    input, textarea, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      background: #fffdfa;
+      font: inherit;
+    }
+    input { padding: 12px 13px; }
+    input[disabled] { color: var(--muted); background: var(--panel-soft); }
+    textarea {
+      min-height: 56vh;
+      resize: vertical;
+      padding: 14px;
+      white-space: pre;
+      overflow: auto;
+    }
+    button {
+      cursor: pointer;
+      padding: 11px 13px;
+      margin-top: 10px;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+      font-weight: 700;
+    }
+    button:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+    button.secondary {
+      background: var(--panel-soft);
+      border-color: var(--border);
+      color: var(--text);
+    }
+    button.secondary:hover { background: #e8e3d7; }
+    button.danger {
+      background: #fff4ed;
+      border-color: #fed7aa;
+      color: var(--danger-strong);
+    }
+    button.danger:hover { background: #ffedd5; }
+    button:disabled { cursor: not-allowed; opacity: 0.56; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .toolbar button { margin-top: 0; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0; }
+    li button {
+      margin: 0 0 8px;
+      text-align: left;
+      background: #ffffff;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    li button.active { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+    .state { color: var(--muted); float: right; }
+    .hidden { display: none; }
+    .error { color: var(--danger-strong); min-height: 1.5em; margin-top: 10px; }
+    .ok { color: var(--accent-strong); min-height: 1.5em; margin-top: 10px; }
+    .keypair {
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      margin-top: 10px;
+    }
+    @media (max-width: 820px) {
+      main { padding: 20px 0; }
+      header { display: block; }
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+      textarea { min-height: 48vh; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>WireGuard TV Config Editor</h1>
+      <p>Temporary LAN access for adding and editing tunnels on this TV device.</p>
+    </div>
+  </header>
+  <div class="warning">Private keys are visible and editable here. Use only on a trusted LAN and stop the server from the TV when finished.</div>
+
+  <section id="login" class="panel">
+    <label for="pin">PIN shown on TV</label>
+    <input id="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="00000000">
+    <button id="loginButton">Unlock</button>
+    <div id="loginError" class="error"></div>
+  </section>
+
+  <section id="editor" class="grid hidden">
+    <aside class="panel">
+      <div class="toolbar">
+        <button id="newButton">New tunnel</button>
+        <button id="refreshButton" class="secondary">Refresh</button>
+      </div>
+      <ul id="tunnels"></ul>
+      <div id="listError" class="error"></div>
+    </aside>
+
+    <section class="panel">
+      <label for="tunnelName">Tunnel name</label>
+      <input id="tunnelName" placeholder="my-tunnel">
+
+      <label for="configText" style="margin-top:14px">wg-quick config</label>
+      <textarea id="configText" spellcheck="false" placeholder="[Interface]\nPrivateKey = ...\nAddress = ...\n\n[Peer]\nPublicKey = ...\nAllowedIPs = ...\nEndpoint = ..."></textarea>
+
+      <div class="row">
+        <button id="saveButton">Save</button>
+        <button id="deleteButton" class="danger">Delete</button>
+      </div>
+      <button id="keypairButton" class="secondary">Generate keypair</button>
+      <div id="keypair" class="keypair hidden"></div>
+      <div id="status" class="ok"></div>
+      <div id="configError" class="error"></div>
+    </section>
+  </section>
+</main>
+<script>
+(() => {
+  let token = '';
+  let selectedName = '';
+  let selectedState = 'DOWN';
+  let creating = true;
+  const login = document.getElementById('login');
+  const editor = document.getElementById('editor');
+  const pin = document.getElementById('pin');
+  const loginError = document.getElementById('loginError');
+  const listError = document.getElementById('listError');
+  const configError = document.getElementById('configError');
+  const status = document.getElementById('status');
+  const tunnels = document.getElementById('tunnels');
+  const tunnelName = document.getElementById('tunnelName');
+  const configText = document.getElementById('configText');
+  const deleteButton = document.getElementById('deleteButton');
+  const keypairBox = document.getElementById('keypair');
+
+  async function api(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(path, Object.assign({}, options, { headers }));
+    if (!response.ok) {
+      let message = `${response.status} ${response.statusText}`;
+      try { message = (await response.json()).error || message; } catch (_) {}
+      throw new Error(message);
+    }
+    return response;
+  }
+
+  function clearMessages() {
+    configError.textContent = '';
+    status.textContent = '';
+  }
+
+  function setCreating() {
+    creating = true;
+    selectedName = '';
+    selectedState = 'DOWN';
+    tunnelName.disabled = false;
+    tunnelName.value = '';
+    configText.value = '';
+    deleteButton.disabled = true;
+    keypairBox.classList.add('hidden');
+    keypairBox.textContent = '';
+    clearMessages();
+    loadTunnels();
+  }
+
+  async function unlock() {
+    loginError.textContent = '';
+    try {
+      const response = await api('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pin.value.trim() })
+      });
+      token = (await response.json()).token;
+      login.classList.add('hidden');
+      editor.classList.remove('hidden');
+      setCreating();
+    } catch (error) {
+      loginError.textContent = error.message;
+    }
+  }
+
+  async function loadTunnels() {
+    listError.textContent = '';
+    tunnels.innerHTML = '';
+    try {
+      const response = await api('/api/tunnels');
+      const items = await response.json();
+      for (const tunnel of items) {
+        const li = document.createElement('li');
+        const button = document.createElement('button');
+        button.textContent = tunnel.name;
+        const state = document.createElement('span');
+        state.className = 'state';
+        state.textContent = tunnel.state;
+        button.appendChild(state);
+        button.className = tunnel.name === selectedName ? 'active' : '';
+        button.onclick = () => loadConfig(tunnel.name, tunnel.state);
+        li.appendChild(button);
+        tunnels.appendChild(li);
+      }
+    } catch (error) {
+      listError.textContent = error.message;
+    }
+  }
+
+  async function loadConfig(name, state) {
+    clearMessages();
+    creating = false;
+    selectedName = name;
+    selectedState = state;
+    tunnelName.disabled = true;
+    tunnelName.value = name;
+    deleteButton.disabled = false;
+    keypairBox.classList.add('hidden');
+    keypairBox.textContent = '';
+    try {
+      const response = await api(`/api/tunnels/${encodeURIComponent(name)}`);
+      configText.value = await response.text();
+      if (state === 'UP') {
+        status.textContent = 'This tunnel is running. Save and delete will be rejected until it is stopped.';
+      }
+      await loadTunnels();
+    } catch (error) {
+      configError.textContent = error.message;
+    }
+  }
+
+  async function saveTunnel() {
+    clearMessages();
+    const name = tunnelName.value.trim();
+    const body = JSON.stringify({ name, configText: configText.value });
+    try {
+      if (creating) {
+        await api('/api/tunnels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+        status.textContent = `Created ${name}`;
+        await loadConfig(name, 'DOWN');
+      } else {
+        await api(`/api/tunnels/${encodeURIComponent(selectedName)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
+        status.textContent = `Saved ${selectedName}`;
+        await loadTunnels();
+      }
+    } catch (error) {
+      configError.textContent = error.message;
+    }
+  }
+
+  async function deleteTunnel() {
+    clearMessages();
+    if (creating || !selectedName) return;
+    if (!confirm(`Delete tunnel "${selectedName}"?`)) return;
+    try {
+      await api(`/api/tunnels/${encodeURIComponent(selectedName)}`, { method: 'DELETE' });
+      status.textContent = `Deleted ${selectedName}`;
+      setCreating();
+    } catch (error) {
+      configError.textContent = error.message;
+    }
+  }
+
+  function insertPrivateKey(privateKey) {
+    const text = configText.value;
+    if (/^\s*PrivateKey\s*=.*$/mi.test(text)) {
+      configText.value = text.replace(/^\s*PrivateKey\s*=.*$/mi, `PrivateKey = ${privateKey}`);
+    } else if (/^\s*\[Interface\]\s*$/mi.test(text)) {
+      configText.value = text.replace(/^\s*\[Interface\]\s*$/mi, `[Interface]\nPrivateKey = ${privateKey}`);
+    } else {
+      configText.value = `[Interface]\nPrivateKey = ${privateKey}\nAddress = \n\n[Peer]\nPublicKey = \nAllowedIPs = \nEndpoint = \n`;
+    }
+  }
+
+  async function generateKeypair() {
+    clearMessages();
+    try {
+      const response = await api('/api/keypair');
+      const keys = await response.json();
+      insertPrivateKey(keys.privateKey);
+      keypairBox.textContent = `PrivateKey: ${keys.privateKey}\nPublicKey: ${keys.publicKey}`;
+      keypairBox.classList.remove('hidden');
+      status.textContent = 'Generated keypair and inserted the private key into the config.';
+    } catch (error) {
+      configError.textContent = error.message;
+    }
+  }
+
+  document.getElementById('loginButton').onclick = unlock;
+  document.getElementById('newButton').onclick = setCreating;
+  document.getElementById('refreshButton').onclick = loadTunnels;
+  document.getElementById('saveButton').onclick = saveTunnel;
+  document.getElementById('deleteButton').onclick = deleteTunnel;
+  document.getElementById('keypairButton').onclick = generateKeypair;
+  pin.addEventListener('keydown', event => { if (event.key === 'Enter') unlock(); });
+  pin.focus();
+})();
+</script>
+</body>
+</html>

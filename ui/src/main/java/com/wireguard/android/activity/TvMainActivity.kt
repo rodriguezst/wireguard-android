@@ -47,6 +47,7 @@ import com.wireguard.android.databinding.TvFileListItemBinding
 import com.wireguard.android.databinding.TvTunnelListItemBinding
 import com.wireguard.android.model.ObservableTunnel
 import com.wireguard.android.tv.autoconnect.TvAutoConnectBootReceiverController
+import com.wireguard.android.tv.web.TvConfigWebServer
 import com.wireguard.android.util.ErrorMessages
 import com.wireguard.android.util.QuantityFormatter
 import com.wireguard.android.util.TunnelImporter
@@ -114,6 +115,7 @@ class TvMainActivity : AppCompatActivity() {
     private val isDeleting = ObservableBoolean()
     private val files = ObservableKeyedArrayList<String, KeyedFile>()
     private val filesRoot = ObservableField("")
+    private var configWebServer: TvConfigWebServer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (AppCompatDelegate.getDefaultNightMode() != AppCompatDelegate.MODE_NIGHT_YES) {
@@ -260,6 +262,11 @@ class TvMainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        stopConfigWebServer()
+        super.onDestroy()
+    }
+
     private var pendingNavigation: File? = null
     private val permissionRequestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         val to = pendingNavigation
@@ -369,10 +376,12 @@ class TvMainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val autoConnectOnBoot = UserKnobs.tvAutoConnectOnBoot.first()
             val autoConnectStatus = getString(if (autoConnectOnBoot) R.string.tv_settings_status_on else R.string.tv_settings_status_off)
+            val webServerRunning = configWebServer?.isRunning == true
             val items = arrayOf(
                 getString(R.string.tv_settings_auto_connect_on_boot, autoConnectStatus),
                 getString(R.string.tv_settings_always_on_vpn, getAlwaysOnVpnStatus()),
                 getString(R.string.tv_settings_open_vpn_settings),
+                getString(if (webServerRunning) R.string.tv_web_editor_stop else R.string.tv_web_editor_start),
             )
             MaterialAlertDialogBuilder(this@TvMainActivity)
                 .setTitle(R.string.settings)
@@ -386,11 +395,44 @@ class TvMainActivity : AppCompatActivity() {
                         }
 
                         2 -> openVpnSettings()
+                        3 -> if (webServerRunning) {
+                            stopConfigWebServer()
+                            showSettingsDialog()
+                        } else {
+                            startConfigWebServer()
+                        }
                     }
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()
         }
+    }
+
+    private fun startConfigWebServer() {
+        try {
+            val server = configWebServer?.takeIf { it.isRunning } ?: TvConfigWebServer(applicationContext).also {
+                configWebServer = it
+            }
+            val session = server.start()
+            showConfigWebServerDialog(session)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Unable to start TV config web server", e)
+            Toast.makeText(this, R.string.tv_web_editor_start_error, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun stopConfigWebServer() {
+        configWebServer?.stop()
+        configWebServer = null
+    }
+
+    private fun showConfigWebServerDialog(session: TvConfigWebServer.Session) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.tv_web_editor_title)
+            .setMessage(getString(R.string.tv_web_editor_started_message, session.url, session.pin))
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(R.string.tv_web_editor_stop) { _, _ -> stopConfigWebServer() }
+            .show()
     }
 
     private fun handleBackPressed() {

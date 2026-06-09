@@ -10,6 +10,8 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -19,6 +21,7 @@ import android.os.storage.StorageVolume
 import android.provider.Settings
 import android.util.Log
 import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +38,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.GridLayoutManager.SpanSizeLookup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.backend.GoBackend
@@ -427,12 +434,37 @@ class TvMainActivity : AppCompatActivity() {
     }
 
     private fun showConfigWebServerDialog(session: TvConfigWebServer.Session) {
-        MaterialAlertDialogBuilder(this)
+        val view = layoutInflater.inflate(R.layout.tv_config_web_server_dialog, null)
+        view.findViewById<android.widget.ImageView>(R.id.web_editor_url_qr).setImageBitmap(createQrBitmap(session.url))
+        view.findViewById<android.widget.TextView>(R.id.web_editor_url).text = session.url
+        view.findViewById<android.widget.TextView>(R.id.web_editor_pin).text = session.pin
+        val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.tv_web_editor_title)
-            .setMessage(getString(R.string.tv_web_editor_started_message, session.url, session.pin))
+            .setView(view)
             .setPositiveButton(android.R.string.ok, null)
             .setNegativeButton(R.string.tv_web_editor_stop) { _, _ -> stopConfigWebServer() }
             .show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * TV_WEB_DIALOG_WIDTH_FRACTION).toInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+        )
+    }
+
+    private fun createQrBitmap(content: String): Bitmap {
+        val hints = mapOf(
+            EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
+            EncodeHintType.MARGIN to 1,
+        )
+        val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, QR_BITMAP_SIZE, QR_BITMAP_SIZE, hints)
+        val pixels = IntArray(QR_BITMAP_SIZE * QR_BITMAP_SIZE)
+        for (y in 0 until QR_BITMAP_SIZE) {
+            val offset = y * QR_BITMAP_SIZE
+            for (x in 0 until QR_BITMAP_SIZE)
+                pixels[offset + x] = if (matrix[x, y]) Color.BLACK else Color.WHITE
+        }
+        return Bitmap.createBitmap(QR_BITMAP_SIZE, QR_BITMAP_SIZE, Bitmap.Config.ARGB_8888).apply {
+            setPixels(pixels, 0, QR_BITMAP_SIZE, 0, 0, QR_BITMAP_SIZE, QR_BITMAP_SIZE)
+        }
     }
 
     private fun handleBackPressed() {
@@ -524,6 +556,8 @@ class TvMainActivity : AppCompatActivity() {
 
     companion object {
         private const val ALWAYS_ON_VPN_APP = "always_on_vpn_app"
+        private const val QR_BITMAP_SIZE = 640
         private const val TAG = "WireGuard/TvMainActivity"
+        private const val TV_WEB_DIALOG_WIDTH_FRACTION = 0.64f
     }
 }

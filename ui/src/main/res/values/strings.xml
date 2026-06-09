@@ -126,8 +126,12 @@
     <string name="tv_web_editor_start">Start LAN config viewer</string>
     <string name="tv_web_editor_start_error">Unable to start LAN config viewer</string>
     <string name="tv_web_editor_started_message">Open this URL from another device on the same LAN:\n\n%1$s\n\nPIN: %2$s\n\nPrivate keys are visible in this viewer. Stop the server when finished.</string>
+    <string name="tv_web_editor_pin_label">PIN</string>
     <string name="tv_web_editor_stop">Stop LAN config viewer</string>
     <string name="tv_web_editor_title">LAN Config Viewer</string>
+    <string name="tv_web_editor_url_label">URL</string>
+    <string name="tv_web_editor_url_qr_description">QR code for LAN config viewer URL</string>
+    <string name="tv_web_editor_warning">Private keys are visible in this viewer.\nStop the server when finished.</string>
     <string name="donate_title">♥ Donate to the WireGuard Project</string>
     <string name="donate_summary">Every contribution helps</string>
     <string name="donate_google_play_disappointment">Thank you for supporting the WireGuard Project!\n\nUnfortunately, due to Google\'s policies, we\'re not allowed to link to the part of the project webpage where you can make a donation. Hopefully you can figure this out!\n\nThanks again for your contribution.</string>

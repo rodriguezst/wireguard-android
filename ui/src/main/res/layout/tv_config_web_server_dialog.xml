@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Copyright © 2017-2026 WireGuard LLC. All Rights Reserved.
+  ~ SPDX-License-Identifier: Apache-2.0
+  -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="8dp">
+
+    <FrameLayout
+        android:id="@+id/web_editor_url_qr_container"
+        android:layout_width="260dp"
+        android:layout_height="260dp"
+        android:layout_gravity="center_vertical"
+        android:padding="24dp">
+
+        <ImageView
+            android:id="@+id/web_editor_url_qr"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/tv_web_editor_url_qr_description"
+            android:scaleType="fitCenter"
+            android:background="@android:color/white" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/web_editor_details"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/web_editor_url_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/tv_web_editor_url_label"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textIsSelectable="false" />
+
+        <TextView
+            android:id="@+id/web_editor_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:includeFontPadding="true"
+            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textIsSelectable="false" />
+
+        <TextView
+            android:id="@+id/web_editor_pin_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/tv_web_editor_pin_label"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
+            android:textIsSelectable="false" />
+
+        <TextView
+            android:id="@+id/web_editor_pin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:includeFontPadding="true"
+            android:textAppearance="?attr/textAppearanceHeadlineMedium"
+            android:textIsSelectable="false" />
+
+        <TextView
+            android:id="@+id/web_editor_warning"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/tv_web_editor_warning"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:textIsSelectable="false" />
+    </LinearLayout>
+</LinearLayout>

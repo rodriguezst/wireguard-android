@@ -47,6 +47,18 @@ object UserKnobs {
         }
     }
 
+    private val TV_AUTO_CONNECT_ON_BOOT = booleanPreferencesKey("tv_auto_connect_on_boot")
+    val tvAutoConnectOnBoot: Flow<Boolean>
+        get() = Application.getPreferencesDataStore().data.map {
+            it[TV_AUTO_CONNECT_ON_BOOT] ?: false
+        }
+
+    suspend fun setTvAutoConnectOnBoot(on: Boolean) {
+        Application.getPreferencesDataStore().edit {
+            it[TV_AUTO_CONNECT_ON_BOOT] = on
+        }
+    }
+
     private val ALLOW_REMOTE_CONTROL_INTENTS = booleanPreferencesKey("allow_remote_control_intents")
     val allowRemoteControlIntents: Flow<Boolean>
         get() = Application.getPreferencesDataStore().data.map {

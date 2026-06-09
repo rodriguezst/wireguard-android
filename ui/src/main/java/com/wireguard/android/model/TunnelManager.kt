@@ -116,7 +116,10 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
             if (lastUsedName != null)
                 lastUsedTunnel = tunnelMap[lastUsedName]
             haveLoaded = true
-            restoreState(true)
+            if (UserKnobs.tvAutoConnectOnBoot.first())
+                Log.i(TAG, "Skipping app startup restore because TV auto-connect is enabled")
+            else
+                restoreState(true)
             tunnels.complete(tunnelMap)
         }
     }

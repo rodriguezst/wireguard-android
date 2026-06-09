@@ -134,6 +134,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
+            android:contentDescription="@string/create_tunnel"
             android:minWidth="0dp"
             android:visibility="@{isDeleting ? View.GONE : View.VISIBLE}"
             app:icon="@{filesRoot.isEmpty ? @drawable/ic_action_add_white : @drawable/ic_arrow_back}"
@@ -142,11 +143,27 @@
             app:layout_constraintEnd_toEndOf="parent" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/settings_button"
+            style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:contentDescription="@string/settings"
+            android:minWidth="0dp"
+            android:visibility="@{(!isDeleting &amp;&amp; filesRoot.isEmpty) ? View.VISIBLE : View.GONE}"
+            app:icon="@drawable/ic_settings"
+            app:iconPadding="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/delete_button"
             style="@style/Widget.Material3.Button.IconButton.Filled.Tonal"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
+            android:contentDescription="@string/delete"
             android:minWidth="0dp"
             android:visibility="@{((tunnels.isEmpty &amp;&amp; !isDeleting) || !filesRoot.isEmpty) ? View.GONE : View.VISIBLE}"
             app:icon="@{isDeleting ? @drawable/ic_arrow_back : @drawable/ic_action_delete}"

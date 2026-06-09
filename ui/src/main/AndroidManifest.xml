@@ -118,6 +118,15 @@
         </receiver>
 
         <receiver
+            android:name=".tv.autoconnect.TvAutoConnectBootReceiver"
+            android:enabled="false"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".updater.Updater$AppUpdatedReceiver"
             android:exported="true">
             <intent-filter>

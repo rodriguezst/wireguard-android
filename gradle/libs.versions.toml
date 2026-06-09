@@ -14,6 +14,7 @@ androidx-datastore-preferences = "androidx.datastore:datastore-preferences:1.2.1
 androidx-fragment-ktx = "androidx.fragment:fragment-ktx:1.8.9"
 androidx-lifecycle-runtime-ktx = "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
 androidx-preference-ktx = "androidx.preference:preference-ktx:1.2.1"
+androidx-work-runtime-ktx = "androidx.work:work-runtime-ktx:2.9.1"
 desugarJdkLibs = "com.android.tools:desugar_jdk_libs:2.1.5"
 google-material = "com.google.android.material:material:1.13.0"
 jsr305 = "com.google.code.findbugs:jsr305:3.0.2"

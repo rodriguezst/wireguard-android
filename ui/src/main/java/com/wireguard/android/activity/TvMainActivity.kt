@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -45,6 +46,7 @@ import com.wireguard.android.databinding.TvActivityBinding
 import com.wireguard.android.databinding.TvFileListItemBinding
 import com.wireguard.android.databinding.TvTunnelListItemBinding
 import com.wireguard.android.model.ObservableTunnel
+import com.wireguard.android.tv.autoconnect.TvAutoConnectBootReceiverController
 import com.wireguard.android.util.ErrorMessages
 import com.wireguard.android.util.QuantityFormatter
 import com.wireguard.android.util.TunnelImporter
@@ -52,6 +54,7 @@ import com.wireguard.android.util.UserKnobs
 import com.wireguard.android.util.applicationScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -232,6 +235,10 @@ class TvMainActivity : AppCompatActivity() {
             }
         }
 
+        binding.settingsButton.setOnClickListener {
+            showSettingsDialog()
+        }
+
         val backPressedCallback = onBackPressedDispatcher.addCallback(this) { handleBackPressed() }
         val updateBackPressedCallback = object : Observable.OnPropertyChangedCallback() {
             override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
@@ -338,6 +345,54 @@ class TvMainActivity : AppCompatActivity() {
         }
     }
 
+    private fun getAlwaysOnVpnStatus(): String {
+        val alwaysOnPackage = try {
+            Settings.Secure.getString(contentResolver, ALWAYS_ON_VPN_APP)
+        } catch (_: Throwable) {
+            return getString(R.string.tv_settings_status_unknown)
+        }
+        return if (alwaysOnPackage == packageName)
+            getString(R.string.tv_settings_status_enabled)
+        else
+            getString(R.string.tv_settings_status_disabled)
+    }
+
+    private fun openVpnSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, R.string.tv_vpn_settings_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showSettingsDialog() {
+        lifecycleScope.launch {
+            val autoConnectOnBoot = UserKnobs.tvAutoConnectOnBoot.first()
+            val autoConnectStatus = getString(if (autoConnectOnBoot) R.string.tv_settings_status_on else R.string.tv_settings_status_off)
+            val items = arrayOf(
+                getString(R.string.tv_settings_auto_connect_on_boot, autoConnectStatus),
+                getString(R.string.tv_settings_always_on_vpn, getAlwaysOnVpnStatus()),
+                getString(R.string.tv_settings_open_vpn_settings),
+            )
+            MaterialAlertDialogBuilder(this@TvMainActivity)
+                .setTitle(R.string.settings)
+                .setItems(items) { _, which ->
+                    when (which) {
+                        0 -> lifecycleScope.launch {
+                            val newValue = !autoConnectOnBoot
+                            UserKnobs.setTvAutoConnectOnBoot(newValue)
+                            TvAutoConnectBootReceiverController.setEnabled(this@TvMainActivity, newValue)
+                            showSettingsDialog()
+                        }
+
+                        2 -> openVpnSettings()
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
+
     private fun handleBackPressed() {
         when {
             isDeleting.get() -> {
@@ -426,6 +481,7 @@ class TvMainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val ALWAYS_ON_VPN_APP = "always_on_vpn_app"
         private const val TAG = "WireGuard/TvMainActivity"
     }
 }

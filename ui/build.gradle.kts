@@ -14,7 +14,7 @@ android {
         dataBinding = true
         viewBinding = true
     }
-    namespace = pkg
+    namespace = "com.wireguard.android"
     defaultConfig {
         applicationId = pkg
         minSdk = 24
@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.preference.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.google.material)

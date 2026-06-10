@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>WireGuard TV Config Editor</title>
   <style>
     :root {
@@ -229,6 +229,57 @@
       position: sticky;
       top: 24px;
     }
+    .qr-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(17, 24, 39, 0.8);
+    }
+    .qr-modal.hidden { display: none; }
+    .qr-dialog {
+      width: min(720px, 100%);
+      max-height: 100%;
+      overflow: auto;
+    }
+    .qr-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .qr-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    .qr-video-shell {
+      position: relative;
+      overflow: hidden;
+      border-radius: 10px;
+      background: #020617;
+      aspect-ratio: 4 / 3;
+      margin-bottom: 12px;
+    }
+    .qr-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .qr-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .qr-note {
+      color: var(--muted);
+      margin-top: 10px;
+    }
     @media (max-width: 820px) {
       main { padding: 16px; }
       header { display: block; }
@@ -262,7 +313,7 @@
     <aside class="panel">
       <div class="toolbar">
         <button id="newButton">New tunnel</button>
-        <button id="refreshButton" class="secondary">Refresh</button>
+        <button id="scanQrButton" class="secondary">Scan QR</button>
       </div>
       <ul id="tunnels"></ul>
       <div id="listError" class="error"></div>
@@ -273,7 +324,14 @@
       <input id="tunnelName" placeholder="my-tunnel">
 
       <label for="configText" style="margin-top:14px">wg-quick config</label>
-      <textarea id="configText" spellcheck="false" placeholder="[Interface]\nPrivateKey = ...\nAddress = ...\n\n[Peer]\nPublicKey = ...\nAllowedIPs = ...\nEndpoint = ..."></textarea>
+      <textarea id="configText" spellcheck="false" placeholder="[Interface]
+PrivateKey = ...
+Address = ...
+
+[Peer]
+PublicKey = ...
+AllowedIPs = ...
+Endpoint = ..."></textarea>
 
       <div class="row">
         <button id="saveButton">Save</button>
@@ -286,12 +344,33 @@
     </section>
   </section>
 </main>
+<div id="qrModal" class="qr-modal hidden" aria-hidden="true">
+  <section class="panel qr-dialog" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+    <div class="qr-header">
+      <div>
+        <h2 id="qrTitle">Scan WireGuard QR</h2>
+        <p>Decoded text will be loaded as a new tunnel draft.</p>
+      </div>
+      <button id="closeQrButton" class="secondary" type="button">Close</button>
+    </div>
+    <div class="qr-video-shell">
+      <video id="qrVideo" class="qr-video" playsinline muted></video>
+      <div id="qrOverlay" class="qr-overlay"></div>
+    </div>
+    <button id="scanQrImageButton" class="secondary" type="button">Scan QR image</button>
+    <input id="scanQrImageInput" class="hidden" type="file" accept="image/*" capture="environment">
+    <div id="qrError" class="error"></div>
+  </section>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qr-scanner@1.4.2/qr-scanner.legacy.min.js"></script>
 <script>
 (() => {
   let token = '';
   let selectedName = '';
   let selectedState = 'DOWN';
   let creating = true;
+  let qrScanner = null;
+  let qrScanComplete = false;
   const login = document.getElementById('login');
   const editor = document.getElementById('editor');
   const pin = document.getElementById('pin');
@@ -304,6 +383,14 @@
   const configText = document.getElementById('configText');
   const deleteButton = document.getElementById('deleteButton');
   const keypairBox = document.getElementById('keypair');
+  const scanQrButton = document.getElementById('scanQrButton');
+  const qrModal = document.getElementById('qrModal');
+  const qrVideo = document.getElementById('qrVideo');
+  const qrOverlay = document.getElementById('qrOverlay');
+  const qrError = document.getElementById('qrError');
+  const closeQrButton = document.getElementById('closeQrButton');
+  const scanQrImageButton = document.getElementById('scanQrImageButton');
+  const scanQrImageInput = document.getElementById('scanQrImageInput');
 
   async function api(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
@@ -322,6 +409,10 @@
     status.textContent = '';
   }
 
+  function clearQrMessage() {
+    qrError.textContent = '';
+  }
+
   function setCreating() {
     creating = true;
     selectedName = '';
@@ -334,6 +425,101 @@
     keypairBox.textContent = '';
     clearMessages();
     loadTunnels();
+  }
+
+  function getQrScannerLib() {
+    if (!window.QrScanner) {
+      throw new Error('QR scanner library did not load.');
+    }
+    return window.QrScanner;
+  }
+
+  function decodedQrData(result) {
+    return result && typeof result === 'object' ? result.data : result;
+  }
+
+  function applyDecodedQrText(decodedText, source) {
+    const text = String(decodedText || '').trim();
+    if (!text) {
+      throw new Error('Decoded QR code was empty.');
+    }
+    setCreating();
+    configText.value = text;
+    configText.focus();
+    configText.setSelectionRange(0, 0);
+    status.textContent = source === 'camera'
+      ? 'Scanned QR config into a new tunnel draft. Enter a tunnel name and save.'
+      : 'Loaded QR image into a new tunnel draft. Enter a tunnel name and save.';
+  }
+
+  function destroyQrScanner() {
+    if (!qrScanner) return;
+    qrScanner.destroy();
+    qrScanner = null;
+    qrOverlay.innerHTML = '';
+  }
+
+  function closeQrModal() {
+    destroyQrScanner();
+    qrModal.classList.add('hidden');
+    qrModal.setAttribute('aria-hidden', 'true');
+    clearQrMessage();
+  }
+
+  async function startQrScanner() {
+    clearMessages();
+    clearQrMessage();
+    qrScanComplete = false;
+    qrModal.classList.remove('hidden');
+    qrModal.setAttribute('aria-hidden', 'false');
+    try {
+      const QrScanner = getQrScannerLib();
+      if (!window.isSecureContext) {
+        throw new Error('Camera scanning is blocked on this HTTP page. Use Scan QR image instead.');
+      }
+      qrScanner = new QrScanner(
+        qrVideo,
+        result => {
+          if (qrScanComplete) return;
+          qrScanComplete = true;
+          applyDecodedQrText(decodedQrData(result), 'camera');
+          closeQrModal();
+        },
+        {
+          preferredCamera: 'environment',
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+          overlay: qrOverlay,
+          returnDetailedScanResult: true,
+          onDecodeError: () => {}
+        }
+      );
+      await qrScanner.start();
+      qrError.textContent = 'Point the camera at a WireGuard config QR code.';
+    } catch (error) {
+      destroyQrScanner();
+      qrError.textContent = error.message || 'Unable to start the QR camera scanner.';
+    }
+  }
+
+  function requestQrImageScan() {
+    clearMessages();
+    clearQrMessage();
+    scanQrImageInput.value = '';
+    scanQrImageInput.click();
+  }
+
+  async function onQrImageSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      const QrScanner = getQrScannerLib();
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      applyDecodedQrText(decodedQrData(result), 'image');
+      closeQrModal();
+    } catch (error) {
+      qrError.textContent = error.message || 'Unable to read a QR code from that image.';
+    }
   }
 
   async function unlock() {
@@ -458,11 +644,19 @@
 
   document.getElementById('loginButton').onclick = unlock;
   document.getElementById('newButton').onclick = setCreating;
-  document.getElementById('refreshButton').onclick = loadTunnels;
   document.getElementById('saveButton').onclick = saveTunnel;
   document.getElementById('deleteButton').onclick = deleteTunnel;
   document.getElementById('keypairButton').onclick = generateKeypair;
+  scanQrButton.onclick = startQrScanner;
+  closeQrButton.onclick = closeQrModal;
+  scanQrImageButton.onclick = requestQrImageScan;
+  scanQrImageInput.addEventListener('change', onQrImageSelected);
   pin.addEventListener('keydown', event => { if (event.key === 'Enter') unlock(); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !qrModal.classList.contains('hidden')) {
+      closeQrModal();
+    }
+  });
   pin.focus();
 })();
 </script>

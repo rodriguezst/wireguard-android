@@ -12,6 +12,17 @@ import com.wireguard.android.backend.Tunnel
 import com.wireguard.config.Config
 import com.wireguard.crypto.KeyPair
 import kotlinx.coroutines.runBlocking
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.BasicConstraints
+import org.bouncycastle.asn1.x509.ExtendedKeyUsage
+import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
+import org.bouncycastle.asn1.x509.GeneralNames
+import org.bouncycastle.asn1.x509.KeyPurposeId
+import org.bouncycastle.asn1.x509.KeyUsage
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -19,6 +30,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.math.BigInteger
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -28,15 +40,25 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.security.KeyPair as JavaKeyPair
+import java.security.KeyPairGenerator
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import java.security.spec.ECGenParameterSpec
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLException
+import javax.net.ssl.SSLServerSocket
 import kotlin.math.max
 
 class TvConfigWebServer(private val context: Context) {
-    data class Session(val url: String, val pin: String)
+    data class Session(val url: String, val pin: String, val certificateFingerprint: String)
 
     @Volatile
     private var serverSocket: ServerSocket? = null
@@ -60,14 +82,15 @@ class TvConfigWebServer(private val context: Context) {
                 return it
         }
         val bindAddress = findLanAddress() ?: InetAddress.getByName("127.0.0.1")
-        val socket = ServerSocket(0, 50, bindAddress)
+        val tlsServerSocket = createTlsServerSocket(bindAddress)
+        val socket = tlsServerSocket.socket
         socket.soTimeout = ACCEPT_TIMEOUT_MS.toInt()
         serverSocket = socket
         running = true
         failedAuthAttempts = 0
         token = randomToken()
         lastActivityMs = System.currentTimeMillis()
-        val newSession = Session("http://${bindAddress.hostAddress}:${socket.localPort}/", randomPin())
+        val newSession = Session("https://${bindAddress.hostAddress}:${socket.localPort}/", randomPin(), tlsServerSocket.certificateFingerprint)
         session = newSession
         executor = Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "TvConfigWebServer").apply { isDaemon = true }
@@ -108,7 +131,21 @@ class TvConfigWebServer(private val context: Context) {
                 } catch (_: SocketException) {
                     return
                 }
-                socket.use { handleClient(it, pin) }
+                try {
+                    socket.use { handleClient(it, pin) }
+                } catch (e: SSLException) {
+                    if (running)
+                        Log.i(TAG, "TV config web server TLS connection failed: ${e.message}")
+                } catch (e: SocketTimeoutException) {
+                    if (running)
+                        Log.i(TAG, "TV config web server client request timed out")
+                } catch (e: SocketException) {
+                    if (running)
+                        Log.i(TAG, "TV config web server client connection closed: ${e.message}")
+                } catch (e: Throwable) {
+                    if (running)
+                        Log.e(TAG, "TV config web server client request failed", e)
+                }
             }
         } catch (e: Throwable) {
             if (running)
@@ -325,6 +362,63 @@ class TvConfigWebServer(private val context: Context) {
         return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
+    private fun createTlsServerSocket(bindAddress: InetAddress): TlsServerSocket {
+        val keyPairGenerator = KeyPairGenerator.getInstance("EC").apply {
+            initialize(ECGenParameterSpec("secp256r1"), secureRandom)
+        }
+        val keyPair = keyPairGenerator.generateKeyPair()
+        val certificate = generateSelfSignedCertificate(bindAddress, keyPair)
+        val password = randomToken().toCharArray()
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null, null)
+            setKeyEntry(TLS_KEY_ALIAS, keyPair.private, password, arrayOf(certificate))
+        }
+        val keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
+            init(keyStore, password)
+        }
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(keyManagerFactory.keyManagers, null, secureRandom)
+        }
+        val socket = sslContext.serverSocketFactory.createServerSocket(0, 50, bindAddress) as SSLServerSocket
+        val enabledProtocols = socket.supportedProtocols
+            .filter { it == "TLSv1.3" || it == "TLSv1.2" }
+            .toTypedArray()
+        if (enabledProtocols.isNotEmpty())
+            socket.enabledProtocols = enabledProtocols
+        return TlsServerSocket(socket, certificateFingerprint(certificate))
+    }
+
+    private fun generateSelfSignedCertificate(bindAddress: InetAddress, keyPair: JavaKeyPair): X509Certificate {
+        val now = System.currentTimeMillis()
+        val subject = X500Name("CN=${bindAddress.hostAddress}")
+        val serial = BigInteger(160, secureRandom).let { if (it.signum() > 0) it else BigInteger.ONE }
+        val builder = JcaX509v3CertificateBuilder(
+            subject,
+            serial,
+            Date(now - CERTIFICATE_CLOCK_SKEW_MS),
+            Date(now + CERTIFICATE_VALIDITY_MS),
+            subject,
+            keyPair.public,
+        )
+        builder.addExtension(Extension.basicConstraints, true, BasicConstraints(false))
+        builder.addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature))
+        builder.addExtension(Extension.extendedKeyUsage, false, ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
+        builder.addExtension(
+            Extension.subjectAlternativeName,
+            false,
+            GeneralNames(GeneralName(GeneralName.iPAddress, bindAddress.hostAddress)),
+        )
+        val signer = JcaContentSignerBuilder("SHA256withECDSA").build(keyPair.private)
+        return JcaX509CertificateConverter().getCertificate(builder.build(signer)).apply {
+            verify(keyPair.public)
+        }
+    }
+
+    private fun certificateFingerprint(certificate: X509Certificate): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(certificate.encoded)
+            .joinToString(":") { String.format(Locale.US, "%02X", it.toInt() and 0xff) }
+
     private fun findLanAddress(): InetAddress? {
         val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
         for (networkInterface in interfaces) {
@@ -351,6 +445,7 @@ class TvConfigWebServer(private val context: Context) {
 
     private data class Request(val method: String, val path: String, val headers: Map<String, String>, val body: String)
     private data class Response(val status: Int, val contentType: String, val body: ByteArray)
+    private data class TlsServerSocket(val socket: SSLServerSocket, val certificateFingerprint: String)
 
     companion object {
         private const val TAG = "WireGuard/TvConfigWebServer"
@@ -358,6 +453,9 @@ class TvConfigWebServer(private val context: Context) {
         private const val REQUEST_TIMEOUT_MS = 5_000L
         private const val INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000L
         private const val MAX_AUTH_FAILURES = 5
+        private const val CERTIFICATE_CLOCK_SKEW_MS = 60 * 60 * 1000L
+        private const val CERTIFICATE_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000L
+        private const val TLS_KEY_ALIAS = "tv-config-web-server"
         private val secureRandom = SecureRandom()
     }
 }

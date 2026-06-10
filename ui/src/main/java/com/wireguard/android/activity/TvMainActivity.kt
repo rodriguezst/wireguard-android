@@ -60,6 +60,7 @@ import com.wireguard.android.util.QuantityFormatter
 import com.wireguard.android.util.TunnelImporter
 import com.wireguard.android.util.UserKnobs
 import com.wireguard.android.util.applicationScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -423,15 +424,41 @@ class TvMainActivity : AppCompatActivity() {
     }
 
     private fun startConfigWebServer() {
-        try {
+        val startingDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.tv_web_editor_generating_certificate_title)
+            .setView(android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(48, 24, 48, 24)
+                addView(android.widget.ProgressBar(context).apply {
+                    isIndeterminate = true
+                })
+                addView(android.widget.TextView(context).apply {
+                    setText(R.string.tv_web_editor_generating_certificate_message)
+                    setPadding(32, 0, 0, 0)
+                    setTextAppearance(android.R.style.TextAppearance_Material_Body1)
+                })
+            })
+            .setCancelable(false)
+            .show()
+        lifecycleScope.launch {
             val server = configWebServer?.takeIf { it.isRunning } ?: TvConfigWebServer(applicationContext).also {
                 configWebServer = it
             }
-            val session = server.start()
-            showConfigWebServerDialog(session)
-        } catch (e: Throwable) {
-            Log.e(TAG, "Unable to start TV config web server", e)
-            Toast.makeText(this, R.string.tv_web_editor_start_error, Toast.LENGTH_LONG).show()
+            try {
+                val session = withContext(Dispatchers.IO) { server.start() }
+                startingDialog.dismiss()
+                showConfigWebServerDialog(session)
+            } catch (e: CancellationException) {
+                startingDialog.dismiss()
+                throw e
+            } catch (e: Throwable) {
+                startingDialog.dismiss()
+                if (!server.isRunning && configWebServer === server)
+                    configWebServer = null
+                Log.e(TAG, "Unable to start TV config web server", e)
+                Toast.makeText(this@TvMainActivity, R.string.tv_web_editor_start_error, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -445,6 +472,8 @@ class TvMainActivity : AppCompatActivity() {
         view.findViewById<android.widget.ImageView>(R.id.web_editor_url_qr).setImageBitmap(createQrBitmap(session.url))
         view.findViewById<android.widget.TextView>(R.id.web_editor_url).text = session.url
         view.findViewById<android.widget.TextView>(R.id.web_editor_pin).text = session.pin
+        view.findViewById<android.widget.TextView>(R.id.web_editor_certificate_fingerprint).text =
+            formatCertificateFingerprint(session.certificateFingerprint)
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(R.string.tv_web_editor_title)
             .setView(view)
@@ -462,6 +491,11 @@ class TvMainActivity : AppCompatActivity() {
             WindowManager.LayoutParams.WRAP_CONTENT,
         )
     }
+
+    private fun formatCertificateFingerprint(fingerprint: String): String =
+        fingerprint.split(':')
+            .chunked(14)
+            .joinToString("\n") { it.joinToString(":") }
 
     private fun createQrBitmap(content: String): Bitmap {
         val hints = mapOf(

@@ -48,7 +48,8 @@
             android:layout_marginTop="4dp"
             android:includeFontPadding="true"
             android:textAppearance="?attr/textAppearanceBodyLarge"
-            android:textIsSelectable="false" />
+            android:textIsSelectable="false"
+            android:textSize="12sp" />
 
         <TextView
             android:id="@+id/web_editor_pin_label"
@@ -66,7 +67,27 @@
             android:fontFamily="monospace"
             android:includeFontPadding="true"
             android:textAppearance="?attr/textAppearanceHeadlineMedium"
+            android:textIsSelectable="false"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/web_editor_certificate_fingerprint_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/tv_web_editor_certificate_fingerprint_label"
+            android:textAppearance="?attr/textAppearanceLabelLarge"
             android:textIsSelectable="false" />
+
+        <TextView
+            android:id="@+id/web_editor_certificate_fingerprint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:includeFontPadding="true"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textIsSelectable="false"
+            android:textSize="10sp" />
 
         <TextView
             android:id="@+id/web_editor_warning"
@@ -75,6 +96,7 @@
             android:layout_marginTop="18dp"
             android:text="@string/tv_web_editor_warning"
             android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textIsSelectable="false" />
+            android:textIsSelectable="false"
+            android:textSize="12sp" />
     </LinearLayout>
 </LinearLayout>

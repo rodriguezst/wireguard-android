@@ -29,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import androidx.core.graphics.createBitmap
 import androidx.core.view.forEach
 import androidx.databinding.DataBindingUtil
 import androidx.databinding.Observable
@@ -509,7 +510,7 @@ class TvMainActivity : AppCompatActivity() {
             for (x in 0 until QR_BITMAP_SIZE)
                 pixels[offset + x] = if (matrix[x, y]) Color.BLACK else Color.WHITE
         }
-        return Bitmap.createBitmap(QR_BITMAP_SIZE, QR_BITMAP_SIZE, Bitmap.Config.ARGB_8888).apply {
+        return createBitmap(QR_BITMAP_SIZE, QR_BITMAP_SIZE).apply {
             setPixels(pixels, 0, QR_BITMAP_SIZE, 0, 0, QR_BITMAP_SIZE, QR_BITMAP_SIZE)
         }
     }

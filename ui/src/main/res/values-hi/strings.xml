@@ -172,4 +172,27 @@
     <string name="zip_export_title">जिप फाइल के लिए टनल को एक्सपोर्ट करें</string>
     <string name="key_length_error">चाबी की लम्बाई गलत </string>
     <string name="key_contents_error">चाबी में खराब वर्ण</string>
+    <string name="tv_settings_always_on_vpn">Android का हमेशा चालू VPN: %s</string>
+    <string name="tv_settings_auto_connect_on_boot">बूट पर अपने आप कनेक्ट करें: %s</string>
+    <string name="tv_settings_open_vpn_settings">Android VPN सेटिंग्स खोलें</string>
+    <string name="tv_settings_status_disabled">अक्षम</string>
+    <string name="tv_settings_status_enabled">सक्षम</string>
+    <string name="tv_settings_status_off">बंद</string>
+    <string name="tv_settings_status_on">चालू</string>
+    <string name="tv_settings_status_unknown">अज्ञात</string>
+    <string name="tv_auto_connect_notification_channel">टीवी ऑटो-कनेक्ट</string>
+    <string name="tv_auto_connect_notification_text">आखिरी उपयोग किए गए टनल से कनेक्ट किया जा रहा है</string>
+    <string name="tv_auto_connect_notification_title">WireGuard शुरू हो रहा है</string>
+    <string name="tv_vpn_settings_unavailable">इस डिवाइस पर Android VPN सेटिंग्स उपलब्ध नहीं हैं</string>
+    <string name="tv_web_editor_start">LAN कॉन्फ़िग व्यूअर शुरू करें</string>
+    <string name="tv_web_editor_start_error">LAN कॉन्फ़िग व्यूअर शुरू नहीं किया जा सका</string>
+    <string name="tv_web_editor_certificate_fingerprint_label">प्रमाणपत्र SHA-256 फिंगरप्रिंट</string>
+    <string name="tv_web_editor_generating_certificate_message">एक अस्थायी HTTPS प्रमाणपत्र जनरेट किया जा रहा है...</string>
+    <string name="tv_web_editor_generating_certificate_title">LAN कॉन्फ़िग व्यूअर शुरू किया जा रहा है</string>
+    <string name="tv_web_editor_pin_label">PIN</string>
+    <string name="tv_web_editor_stop">LAN कॉन्फ़िग व्यूअर बंद करें</string>
+    <string name="tv_web_editor_title">LAN कॉन्फ़िग व्यूअर</string>
+    <string name="tv_web_editor_url_label">URL</string>
+    <string name="tv_web_editor_url_qr_description">LAN कॉन्फ़िग व्यूअर URL के लिए QR कोड</string>
+    <string name="tv_web_editor_warning">अपने ब्राउज़र में SSL प्रमाणपत्र फिंगरप्रिंट सत्यापित करें \n\'Trust\' पर क्लिक करने से पहले।</string>
 </resources>

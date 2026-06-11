@@ -33,3 +33,16 @@
 -keepclasseswithmembers class * {
     @androidx.annotation.Keep <init>(...);
 }
+
+# WorkManager stores its queue in an internal Room database. Release R8 can otherwise
+# optimize generated Room implementation members that WorkManager/Room load reflectively.
+-keep class androidx.work.impl.WorkDatabase { *; }
+-keep class androidx.work.impl.WorkDatabase_Impl { *; }
+-keep class androidx.work.impl.WorkDatabase_Impl$* { *; }
+-keep class androidx.work.impl.WorkDatabase_AutoMigration_*_Impl { *; }
+-keep class androidx.work.impl.model.*Dao { *; }
+-keep class androidx.work.impl.model.*Dao_Impl { *; }
+-keep class androidx.work.impl.model.*Dao_Impl$* { *; }
+-keep class com.wireguard.android.tv.autoconnect.TvAutoConnectWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}

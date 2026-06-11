@@ -26,9 +26,8 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
-import java.io.BufferedReader
 import java.io.BufferedWriter
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.io.OutputStreamWriter
 import java.math.BigInteger
 import java.net.Inet4Address
@@ -197,14 +196,14 @@ class TvConfigWebServer(private val context: Context) {
     }
 
     private fun readRequest(socket: Socket): Request? {
-        val reader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
-        val requestLine = reader.readLine() ?: return null
+        val input = socket.getInputStream()
+        val requestLine = readHeaderLine(input) ?: return null
         val parts = requestLine.split(' ')
         if (parts.size < 2)
             return null
         val headers = mutableMapOf<String, String>()
         while (true) {
-            val line = reader.readLine() ?: return null
+            val line = readHeaderLine(input) ?: return null
             if (line.isEmpty())
                 break
             val separator = line.indexOf(':')
@@ -214,20 +213,33 @@ class TvConfigWebServer(private val context: Context) {
         }
         val contentLength = max(0, headers["content-length"]?.toIntOrNull() ?: 0)
         val body = if (contentLength > 0) {
-            val chars = CharArray(contentLength)
+            val bytes = ByteArray(contentLength)
             var read = 0
             while (read < contentLength) {
-                val count = reader.read(chars, read, contentLength - read)
+                val count = input.read(bytes, read, contentLength - read)
                 if (count < 0)
-                    break
+                    return null
                 read += count
             }
-            String(chars, 0, read)
+            String(bytes, StandardCharsets.UTF_8)
         } else {
             ""
         }
         val rawPath = parts[1].substringBefore('?')
         return Request(parts[0], rawPath, headers, body)
+    }
+
+    private fun readHeaderLine(input: InputStream): String? {
+        val bytes = ArrayList<Byte>()
+        while (true) {
+            val next = input.read()
+            if (next < 0)
+                return if (bytes.isEmpty()) null else String(bytes.toByteArray(), StandardCharsets.ISO_8859_1)
+            if (next == '\n'.code)
+                return String(bytes.toByteArray(), StandardCharsets.ISO_8859_1)
+            if (next != '\r'.code)
+                bytes.add(next.toByte())
+        }
     }
 
     private fun writeResponse(socket: Socket, response: Response) {

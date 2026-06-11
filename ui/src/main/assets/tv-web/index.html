@@ -216,6 +216,96 @@
         Consolas,
         monospace;
     }
+    .apps {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .section-head label { margin-bottom: 0; }
+    .summary {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .app-modes {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .app-modes button {
+      width: auto;
+      margin-top: 0;
+      padding: 0 10px;
+      white-space: normal;
+    }
+    .app-modes button.active {
+      background: var(--accent-soft);
+      border-color: var(--accent-soft);
+      color: var(--accent-soft-text);
+    }
+    .app-picker {
+      display: grid;
+      gap: 10px;
+    }
+    .app-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .app-toolbar button {
+      width: auto;
+      margin-top: 0;
+    }
+    .app-list {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .app-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 0;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    .app-option:last-child { border-bottom: 0; }
+    .app-option input {
+      width: auto;
+      flex: 0 0 auto;
+      margin-top: 3px;
+    }
+    .app-name,
+    .app-package {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+    .app-package {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+    .empty {
+      padding: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
     textarea,
     .keypair {
       font-family:
@@ -286,6 +376,7 @@
       .title { align-items: flex-start; }
       .grid { grid-template-columns: 1fr; }
       .row { grid-template-columns: 1fr; }
+      .app-modes { grid-template-columns: 1fr; }
       textarea { min-height: 48vh; }
       aside.panel { position: static; }
     }
@@ -332,6 +423,27 @@ Address = ...
 PublicKey = ...
 AllowedIPs = ...
 Endpoint = ..."></textarea>
+
+      <section id="appsSection" class="apps hidden">
+        <div class="section-head">
+          <label>Apps</label>
+          <span id="appsSummary" class="summary"></span>
+        </div>
+        <div class="app-modes">
+          <button id="appsModeAll" class="secondary" type="button" data-app-mode="all">All apps</button>
+          <button id="appsModeExclude" class="secondary" type="button" data-app-mode="exclude">Exclude selected</button>
+          <button id="appsModeInclude" class="secondary" type="button" data-app-mode="include">Include selected</button>
+        </div>
+        <div id="appsPicker" class="app-picker hidden">
+          <input id="appsSearch" type="search" placeholder="Search apps">
+          <div class="app-toolbar">
+            <span id="appsCount" class="summary"></span>
+            <button id="appsClearButton" class="secondary" type="button">Clear selected</button>
+          </div>
+          <div id="appsList" class="app-list"></div>
+        </div>
+        <div id="appsError" class="error"></div>
+      </section>
 
       <div class="row">
         <button id="saveButton">Save</button>
@@ -391,6 +503,22 @@ Endpoint = ..."></textarea>
   const closeQrButton = document.getElementById('closeQrButton');
   const scanQrImageButton = document.getElementById('scanQrImageButton');
   const scanQrImageInput = document.getElementById('scanQrImageInput');
+  const appsSection = document.getElementById('appsSection');
+  const appsSummary = document.getElementById('appsSummary');
+  const appsPicker = document.getElementById('appsPicker');
+  const appsSearch = document.getElementById('appsSearch');
+  const appsCount = document.getElementById('appsCount');
+  const appsClearButton = document.getElementById('appsClearButton');
+  const appsList = document.getElementById('appsList');
+  const appsError = document.getElementById('appsError');
+  const appModeButtons = Array.from(document.querySelectorAll('[data-app-mode]'));
+  let installedApps = [];
+  let appsLoaded = false;
+  let appLoadError = '';
+  let appMode = 'all';
+  let selectedApps = new Set();
+  let appsHaveInterface = false;
+  let appConfigConflict = false;
 
   async function api(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
@@ -413,6 +541,265 @@ Endpoint = ..."></textarea>
     qrError.textContent = '';
   }
 
+  function stripConfigComment(line) {
+    const index = line.indexOf('#');
+    return index === -1 ? line : line.slice(0, index);
+  }
+
+  function sectionName(line) {
+    const match = stripConfigComment(line).trim().match(/^\[([^\]]+)\]$/);
+    return match ? match[1].toLowerCase() : '';
+  }
+
+  function attributeKey(line) {
+    const match = stripConfigComment(line).trim().match(/^(\w+)\s*=/);
+    return match ? match[1].toLowerCase() : '';
+  }
+
+  function splitPackageList(value) {
+    return value
+      .split(/\s*,\s*/)
+      .map(packageName => packageName.trim())
+      .filter(Boolean);
+  }
+
+  function uniquePackages(packages) {
+    const seen = new Set();
+    const result = [];
+    for (const packageName of packages) {
+      if (seen.has(packageName)) continue;
+      seen.add(packageName);
+      result.push(packageName);
+    }
+    return result;
+  }
+
+  function readAppSelectionFromConfig(text) {
+    const included = [];
+    const excluded = [];
+    let hasInterface = false;
+    let inInterface = false;
+    for (const line of text.split(/\r?\n/)) {
+      const section = sectionName(line);
+      if (section) {
+        inInterface = section === 'interface';
+        hasInterface = hasInterface || inInterface;
+        continue;
+      }
+      if (!inInterface) continue;
+      const match = stripConfigComment(line).trim().match(/^(\w+)\s*=\s*(.*)$/);
+      if (!match) continue;
+      const key = match[1].toLowerCase();
+      if (key === 'includedapplications') {
+        included.push(...splitPackageList(match[2]));
+      } else if (key === 'excludedapplications') {
+        excluded.push(...splitPackageList(match[2]));
+      }
+    }
+    const hasIncluded = included.length > 0;
+    const hasExcluded = excluded.length > 0;
+    return {
+      hasInterface,
+      conflict: hasIncluded && hasExcluded,
+      mode: hasIncluded ? 'include' : hasExcluded ? 'exclude' : 'all',
+      packages: uniquePackages(hasIncluded ? included : excluded)
+    };
+  }
+
+  function isAppSelectionLine(line) {
+    const key = attributeKey(line);
+    return key === 'includedapplications' || key === 'excludedapplications';
+  }
+
+  function selectedPackagesInDisplayOrder() {
+    const known = installedApps
+      .filter(app => selectedApps.has(app.packageName))
+      .map(app => app.packageName);
+    const knownPackages = new Set(installedApps.map(app => app.packageName));
+    const unknown = Array.from(selectedApps)
+      .filter(packageName => !knownPackages.has(packageName))
+      .sort((a, b) => a.localeCompare(b));
+    return known.concat(unknown);
+  }
+
+  function rewriteAppSelectionInConfig(text, validateSelection) {
+    const current = readAppSelectionFromConfig(text);
+    if (!current.hasInterface) return text;
+    if (current.conflict) {
+      throw new Error('Config has both IncludedApplications and ExcludedApplications. Remove one before using Apps.');
+    }
+    const selectedPackages = selectedPackagesInDisplayOrder();
+    if (validateSelection && appMode !== 'all' && selectedPackages.length === 0) {
+      throw new Error('Choose at least one app or switch Apps to All apps.');
+    }
+    const appLine = appMode === 'all' || selectedPackages.length === 0
+      ? ''
+      : `${appMode === 'include' ? 'IncludedApplications' : 'ExcludedApplications'} = ${selectedPackages.join(', ')}`;
+    const lines = text.split(/\r?\n/);
+    const rewritten = [];
+    let inInterface = false;
+    let inserted = false;
+    for (const line of lines) {
+      const section = sectionName(line);
+      if (section) {
+        if (inInterface && !inserted && appLine) {
+          rewritten.push(appLine);
+          inserted = true;
+        }
+        inInterface = section === 'interface';
+        rewritten.push(line);
+        continue;
+      }
+      if (inInterface && isAppSelectionLine(line)) {
+        continue;
+      }
+      if (inInterface && !inserted && appLine && attributeKey(line) === 'privatekey') {
+        rewritten.push(appLine);
+        inserted = true;
+      }
+      rewritten.push(line);
+    }
+    if (inInterface && !inserted && appLine) {
+      rewritten.push(appLine);
+    }
+    return rewritten.join('\n');
+  }
+
+  function appSummaryText() {
+    if (appMode === 'all') return 'All apps';
+    const count = selectedApps.size;
+    const noun = count === 1 ? 'app' : 'apps';
+    return `${count} ${noun} ${appMode === 'include' ? 'included' : 'excluded'}`;
+  }
+
+  function appMatchesQuery(app, query) {
+    if (!query) return true;
+    return app.name.toLowerCase().includes(query) || app.packageName.toLowerCase().includes(query);
+  }
+
+  function addAppOption(app, unknown) {
+    const label = document.createElement('label');
+    label.className = 'app-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = selectedApps.has(app.packageName);
+    checkbox.disabled = appConfigConflict;
+    checkbox.onchange = () => {
+      if (checkbox.checked) {
+        selectedApps.add(app.packageName);
+      } else {
+        selectedApps.delete(app.packageName);
+      }
+      renderAppSelection();
+      commitAppSelectionToConfig();
+    };
+    const text = document.createElement('span');
+    const name = document.createElement('span');
+    name.className = 'app-name';
+    name.textContent = app.name;
+    const packageName = document.createElement('span');
+    packageName.className = 'app-package';
+    packageName.textContent = unknown ? `${app.packageName} (not in app list)` : app.packageName;
+    text.appendChild(name);
+    text.appendChild(packageName);
+    label.appendChild(checkbox);
+    label.appendChild(text);
+    appsList.appendChild(label);
+  }
+
+  function renderAppSelection() {
+    appsSection.classList.toggle('hidden', !appsHaveInterface);
+    if (!appsHaveInterface) return;
+    const controlsDisabled = appConfigConflict;
+    appModeButtons.forEach(button => {
+      const active = button.dataset.appMode === appMode;
+      button.classList.toggle('active', active);
+      button.disabled = controlsDisabled;
+    });
+    appsPicker.classList.toggle('hidden', appMode === 'all');
+    appsSummary.textContent = appSummaryText();
+    appsCount.textContent = appSummaryText();
+    appsSearch.disabled = controlsDisabled || !appsLoaded;
+    appsClearButton.disabled = controlsDisabled || selectedApps.size === 0;
+    if (appConfigConflict) {
+      appsError.textContent = 'Config has both IncludedApplications and ExcludedApplications.';
+    } else if (appLoadError) {
+      appsError.textContent = appLoadError;
+    } else if (!appsLoaded) {
+      appsError.textContent = 'Loading apps...';
+    } else {
+      appsError.textContent = '';
+    }
+    appsList.innerHTML = '';
+    if (appMode === 'all') return;
+    const query = appsSearch.value.trim().toLowerCase();
+    const knownPackages = new Set(installedApps.map(app => app.packageName));
+    const knownMatches = installedApps.filter(app => appMatchesQuery(app, query));
+    const unknownMatches = Array.from(selectedApps)
+      .filter(packageName => !knownPackages.has(packageName))
+      .sort((a, b) => a.localeCompare(b))
+      .map(packageName => ({ name: packageName, packageName }))
+      .filter(app => appMatchesQuery(app, query));
+    for (const app of unknownMatches) {
+      addAppOption(app, true);
+    }
+    for (const app of knownMatches) {
+      addAppOption(app, false);
+    }
+    if (unknownMatches.length === 0 && knownMatches.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = appsLoaded ? 'No matching apps' : 'No apps loaded';
+      appsList.appendChild(empty);
+    }
+  }
+
+  function syncAppSelectionFromConfig() {
+    const selection = readAppSelectionFromConfig(configText.value);
+    appsHaveInterface = selection.hasInterface;
+    appConfigConflict = selection.conflict;
+    if (!selection.hasInterface) {
+      appMode = 'all';
+      selectedApps = new Set();
+    } else {
+      appMode = selection.mode;
+      selectedApps = new Set(selection.packages);
+    }
+    renderAppSelection();
+  }
+
+  function commitAppSelectionToConfig() {
+    if (!appsHaveInterface || appConfigConflict) return;
+    try {
+      configText.value = rewriteAppSelectionInConfig(configText.value, false);
+    } catch (error) {
+      appsError.textContent = error.message;
+    }
+  }
+
+  function setAppMode(mode) {
+    appMode = mode;
+    if (mode === 'all') {
+      selectedApps.clear();
+    }
+    renderAppSelection();
+    commitAppSelectionToConfig();
+  }
+
+  async function loadApps() {
+    appLoadError = '';
+    renderAppSelection();
+    try {
+      const response = await api('/api/apps');
+      const apps = await response.json();
+      installedApps = Array.isArray(apps) ? apps : [];
+      appsLoaded = true;
+    } catch (error) {
+      appLoadError = error.message || 'Unable to load apps.';
+    }
+    renderAppSelection();
+  }
+
   function setCreating() {
     creating = true;
     selectedName = '';
@@ -424,6 +811,7 @@ Endpoint = ..."></textarea>
     keypairBox.classList.add('hidden');
     keypairBox.textContent = '';
     clearMessages();
+    syncAppSelectionFromConfig();
     loadTunnels();
   }
 
@@ -445,6 +833,7 @@ Endpoint = ..."></textarea>
     }
     setCreating();
     configText.value = text;
+    syncAppSelectionFromConfig();
     configText.focus();
     configText.setSelectionRange(0, 0);
     status.textContent = source === 'camera'
@@ -533,6 +922,7 @@ Endpoint = ..."></textarea>
       token = (await response.json()).token;
       login.classList.add('hidden');
       editor.classList.remove('hidden');
+      loadApps();
       setCreating();
     } catch (error) {
       loginError.textContent = error.message;
@@ -576,6 +966,7 @@ Endpoint = ..."></textarea>
     try {
       const response = await api(`/api/tunnels/${encodeURIComponent(name)}`);
       configText.value = await response.text();
+      syncAppSelectionFromConfig();
       if (state === 'UP') {
         status.textContent = 'This tunnel is running. Save and delete will be rejected until it is stopped.';
       }
@@ -588,7 +979,16 @@ Endpoint = ..."></textarea>
   async function saveTunnel() {
     clearMessages();
     const name = tunnelName.value.trim();
-    const body = JSON.stringify({ name, configText: configText.value });
+    let finalConfigText = configText.value;
+    try {
+      finalConfigText = rewriteAppSelectionInConfig(configText.value, true);
+      configText.value = finalConfigText;
+      syncAppSelectionFromConfig();
+    } catch (error) {
+      configError.textContent = error.message;
+      return;
+    }
+    const body = JSON.stringify({ name, configText: finalConfigText });
     try {
       if (creating) {
         await api('/api/tunnels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -626,6 +1026,7 @@ Endpoint = ..."></textarea>
     } else {
       configText.value = `[Interface]\nPrivateKey = ${privateKey}\nAddress = \n\n[Peer]\nPublicKey = \nAllowedIPs = \nEndpoint = \n`;
     }
+    syncAppSelectionFromConfig();
   }
 
   async function generateKeypair() {
@@ -651,6 +1052,16 @@ Endpoint = ..."></textarea>
   closeQrButton.onclick = closeQrModal;
   scanQrImageButton.onclick = requestQrImageScan;
   scanQrImageInput.addEventListener('change', onQrImageSelected);
+  configText.addEventListener('input', syncAppSelectionFromConfig);
+  appsSearch.addEventListener('input', renderAppSelection);
+  appsClearButton.onclick = () => {
+    selectedApps.clear();
+    renderAppSelection();
+    commitAppSelectionToConfig();
+  };
+  for (const button of appModeButtons) {
+    button.onclick = () => setAppMode(button.dataset.appMode);
+  }
   pin.addEventListener('keydown', event => { if (event.key === 'Enter') unlock(); });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape' && !qrModal.classList.contains('hidden')) {

@@ -4,7 +4,12 @@
  */
 package com.wireguard.android.tv.web
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.PackageManager.PackageInfoFlags
+import android.os.Build
 import android.util.Base64
 import android.util.Log
 import com.wireguard.android.Application
@@ -176,6 +181,7 @@ class TvConfigWebServer(private val context: Context) {
                         jsonResponse(403, JSONObject().put("error", "Invalid PIN"))
                     }
                 }
+                request.method == "GET" && request.path == "/api/apps" -> jsonResponse(200, listApps())
                 request.method == "GET" && request.path == "/api/tunnels" -> jsonResponse(200, listTunnels())
                 request.method == "POST" && request.path == "/api/tunnels" -> createTunnel(request.body)
                 request.method == "GET" && request.path.startsWith("/api/tunnels/") -> tunnelConfigResponse(request.path.removePrefix("/api/tunnels/"))
@@ -262,6 +268,31 @@ class TvConfigWebServer(private val context: Context) {
 
     private fun isAuthorized(request: Request): Boolean =
         request.headers["authorization"] == "Bearer $token"
+
+    private fun listApps(): JSONArray {
+        val packageManager = context.packageManager
+        val apps = getPackagesHoldingPermissions(packageManager, arrayOf(Manifest.permission.INTERNET))
+            .mapNotNull { packageInfo ->
+                val packageName = packageInfo.packageName ?: return@mapNotNull null
+                val appInfo = packageInfo.applicationInfo ?: return@mapNotNull null
+                val label = appInfo.loadLabel(packageManager)?.toString()?.ifBlank { packageName } ?: packageName
+                AppEntry(label, packageName)
+            }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, AppEntry::name).thenBy(AppEntry::packageName))
+        return JSONArray().also { array ->
+            apps.forEach { app ->
+                array.put(JSONObject().put("name", app.name).put("packageName", app.packageName))
+            }
+        }
+    }
+
+    private fun getPackagesHoldingPermissions(packageManager: PackageManager, permissions: Array<String>): List<PackageInfo> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackagesHoldingPermissions(permissions, PackageInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackagesHoldingPermissions(permissions, 0)
+        }
 
     private fun listTunnels(): JSONArray = runBlocking {
         val tunnels = Application.getTunnelManager().getTunnels()
@@ -458,6 +489,7 @@ class TvConfigWebServer(private val context: Context) {
     private data class Request(val method: String, val path: String, val headers: Map<String, String>, val body: String)
     private data class Response(val status: Int, val contentType: String, val body: ByteArray)
     private data class TlsServerSocket(val socket: SSLServerSocket, val certificateFingerprint: String)
+    private data class AppEntry(val name: String, val packageName: String)
 
     companion object {
         private const val TAG = "WireGuard/TvConfigWebServer"
